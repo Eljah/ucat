@@ -10,6 +10,9 @@
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
+  <dependencies>
+    <dependency><groupId>org.apache.pdfbox</groupId><artifactId>pdfbox</artifactId><version>3.0.7</version></dependency>
+  </dependencies>
   <build>
     <plugins>
       <plugin>
@@ -30,6 +33,16 @@
         <configuration>
           <archive><manifest><mainClass>ru.activisthelp.ActivistApp</mainClass></manifest></archive>
         </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId><version>3.6.1</version>
+        <executions><execution><phase>package</phase><goals><goal>shade</goal></goals>
+          <configuration><createDependencyReducedPom>false</createDependencyReducedPom>
+            <transformers><transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+              <mainClass>ru.activisthelp.ActivistApp</mainClass>
+            </transformer></transformers>
+          </configuration>
+        </execution></executions>
       </plugin>
     </plugins>
   </build>

@@ -108,6 +108,15 @@ public final class Discovery {
                 if("EIS_INBOX".equals(site.id())) {
                     EisInbox.Result res=EisInbox.scan(System.getenv("ACTIVIST_EIS_INBOX"));
                     candidates=res.events();note=res.note();
+                } else if("EIS_SOAP".equals(site.id())) {
+                    EisSoapClient.Result res=EisSoapClient.scanFromEnvironment();
+                    candidates=res.events();note=res.note();
+                } else if("LOCAL_PDF_ANNEX".equals(site.id())) {
+                    RoadAnnex.Result res=RoadAnnex.scanLocal(System.getenv("ACTIVIST_ANNEX_INBOX"));
+                    candidates=res.events();note=res.note();
+                } else if(site.id().endsWith("PDF_ANNEX")||"RT_PDF_PLAN".equals(site.id())) {
+                    RoadAnnex.Result res=RoadAnnex.scanUrl(site.url(),url->fetch(URI.create(url)),RoadAnnex::fetchPdf);
+                    candidates=res.events();note=res.note();
                 } else {
                     OfficialSources.Result res=OfficialSources.collect(site.id(),url->fetch(URI.create(url)));
                     candidates=res.events();note=res.note();
@@ -120,6 +129,13 @@ public final class Discovery {
                 }
                 String status=candidates.isEmpty() && !"EIS_INBOX".equals(site.id())?"Проверено, HTML не подтвержден":"Проверено (экспериментально)";
                 if("EIS_INBOX".equals(site.id()) && System.getenv("ACTIVIST_EIS_INBOX")==null)status="Ожидает настройки";
+                if("EIS_SOAP".equals(site.id())) {
+                    if(System.getenv("ACTIVIST_EIS_TOKEN")==null)status="Ожидает регистрации ЕИС";
+                    else if(note.contains("ошибка ")||note.contains("noData/нет archiveUrl"))
+                        status="ЕИС: частичный результат / проверьте параметры";
+                    else status="ЕИС: запрос выполнен (неполная выборка)";
+                }
+                if("LOCAL_PDF_ANNEX".equals(site.id()) && System.getenv("ACTIVIST_ANNEX_INBOX")==null)status="Ожидает настройки";
                 statuses.put(site.id(),state(site,status,added,note));
             }catch(Exception ex) {
                 statuses.put(site.id(),state(site,"Ошибка доступа / разбора",added,ex.getClass().getSimpleName()+": "+safeMessage(ex)));

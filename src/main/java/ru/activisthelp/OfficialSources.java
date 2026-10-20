@@ -35,7 +35,12 @@ public final class OfficialSources {
         new Site("RT_ORDERS","Документы Минтранса Татарстана",RT_ORDERS_URL),
         new Site("RT_ROAD_NEWS","Сообщения Минтранса РТ",RT_NEWS_URL),
         new Site("EIS_ROADS","ЕИС: дорожные закупки в Казани",EIS_URL),
-        new Site("EIS_INBOX","ЕИС: локальный экспорт XML/CSV",EIS_URL)
+        new Site("EIS_INBOX","ЕИС: локальный экспорт XML/CSV",EIS_URL),
+        new Site("EIS_SOAP","ЕИС: официальный SOAP getDocsIP (44-ФЗ)",EisSoapClient.ENDPOINT),
+        new Site("KZN_PDF_ANNEX","PDF приложений правовых актов Казани",RoadAnnex.KZN),
+        new Site("RT_PDF_ANNEX","PDF приложений постановлений Кабмина РТ",RoadAnnex.RT),
+        new Site("RT_PDF_PLAN","Программа дорожных работ РТ: PDF-приложения",RoadAnnex.PLAN),
+        new Site("LOCAL_PDF_ANNEX","Локальный импорт PDF-приложений",RoadAnnex.KZN)
     );
     private static final Pattern ANCHOR=Pattern.compile("<a\\b[^>]*?href\\s*=\\s*(['\"])(.*?)\\1[^>]*>(.*?)</a\\s*>",Pattern.CASE_INSENSITIVE|Pattern.DOTALL);
     private static final Pattern PARAGRAPH=Pattern.compile("<p\\b[^>]*>(.*?)</p\\s*>",Pattern.CASE_INSENSITIVE|Pattern.DOTALL);

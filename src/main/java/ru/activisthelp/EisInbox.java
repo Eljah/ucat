@@ -62,6 +62,35 @@ public final class EisInbox {
         if(!errors.isEmpty())msg+=" Ошибки: "+String.join("; ",errors).substring(0,Math.min(800,String.join("; ",errors).length()));
         return new Result(events,msg);
     }
+
+    /** Parse machine-readable EIS ZIP wholly in memory with conservative inflation limits. */
+    static List<Map<String,Object>> zip(byte[] archive) throws Exception {
+        if(archive.length>30_000_000)throw new IOException("Archive too large");
+        List<Map<String,Object>> result=new ArrayList<>();long decompressed=0;int count=0;
+        try(ZipInputStream zin=new ZipInputStream(new ByteArrayInputStream(archive))) {
+            ZipEntry e;
+            while((e=zin.getNextEntry())!=null) {
+                if(++count>400)throw new IOException("Too many ZIP entries");
+                if(e.isDirectory())continue;
+                String file=e.getName().toLowerCase(Locale.ROOT);
+                if(!file.endsWith(".xml")&&!file.endsWith(".csv"))continue;
+                byte[] data=zin.readNBytes(MAX_FILE+1);
+                if(data.length>MAX_FILE)throw new IOException("Oversized EIS entry");
+                decompressed+=data.length;
+                if(decompressed>80_000_000)throw new IOException("ZIP expansion limit");
+                try {
+                    result.addAll(file.endsWith(".xml")?xml(data):csv(new String(data,StandardCharsets.UTF_8)));
+                }catch(Exception exception) {
+                    // EIS exports may include signatures, administrative documents, or another XML schema;
+                    // one malformed/non-notice XML must not discard the entire valid archive.
+                    if(exception instanceof org.xml.sax.SAXParseException && new String(data,StandardCharsets.UTF_8).contains("<!DOCTYPE"))
+                        throw exception; // reject malicious XML structure
+                }
+            }
+        }
+        return result;
+    }
+
     /** Normalized CSV export, NOT an assertion about EIS' evolving CSV column names. */
     static List<Map<String,Object>> csv(String content) {
         if(content.startsWith("\uFEFF"))content=content.substring(1);

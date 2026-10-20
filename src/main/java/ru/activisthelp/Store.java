@@ -72,6 +72,8 @@ public final class Store {
             "program",limit(Json.string(input.get("program")),200),
             "authority",limit(Json.string(input.get("authority")),250),
             "documentKind",limit(Json.string(input.get("documentKind")),100),
+            "annexPage",input.get("annexPage") instanceof Number ? ((Number)input.get("annexPage")).intValue() : null,
+            "evidenceText",limit(Json.string(input.get("evidenceText")),700),
             "requiresReview",Boolean.TRUE.equals(input.get("requiresReview")));
         events.add(0,ev);save();return ev;
     }
