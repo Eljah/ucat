@@ -21,4 +21,6 @@ jobs:
       - name: Build project
         run: mvn -B -ntp clean package
       - name: Run smoke test with assertions
-        run: java -ea -cp target/classes:target/test-classes ru.activisthelp.SmokeTest
+        run: |
+          java -ea -cp target/classes:target/test-classes ru.activisthelp.SmokeTest
+          java -ea -cp target/classes:target/test-classes ru.activisthelp.RoadSourcesTest

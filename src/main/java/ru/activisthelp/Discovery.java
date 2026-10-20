@@ -43,6 +43,7 @@ public final class Discovery {
     public Discovery(Store store) {
         this.store=store;
         for(Provider p:PROVIDERS)statuses.put(p.id(),state(p,"Не проверялся",0,""));
+        for(OfficialSources.Site site:OfficialSources.SITES)statuses.put(site.id(),state(site,"Не проверялся",0,""));
     }
     public void schedule(int hours) {
         executor.scheduleWithFixedDelay(this::scan,120,Math.max(1,hours)*3600L,TimeUnit.SECONDS);
@@ -56,6 +57,7 @@ public final class Discovery {
     public List<Map<String,Object>> status(){
         List<Map<String,Object>> data=new ArrayList<>();
         for(Provider p:PROVIDERS)data.add(new LinkedHashMap<>(statuses.get(p.id())));
+        for(OfficialSources.Site site:OfficialSources.SITES)data.add(new LinkedHashMap<>(statuses.get(site.id())));
         return data;
     }
     private void runScan() {
@@ -97,7 +99,37 @@ public final class Discovery {
                 statuses.put(p.id(),state(p,"Ошибка доступа",added,ex.getClass().getSimpleName()+": "+safeMessage(ex)));
             }
         }
+        for(OfficialSources.Site site:OfficialSources.SITES) {
+            int added=0;
+            statuses.put(site.id(),state(site,"Проверяется",0,""));
+            try {
+                List<Map<String,Object>> candidates;
+                String note;
+                if("EIS_INBOX".equals(site.id())) {
+                    EisInbox.Result res=EisInbox.scan(System.getenv("ACTIVIST_EIS_INBOX"));
+                    candidates=res.events();note=res.note();
+                } else {
+                    OfficialSources.Result res=OfficialSources.collect(site.id(),url->fetch(URI.create(url)));
+                    candidates=res.events();note=res.note();
+                }
+                for(Map<String,Object> candidate:candidates) {
+                    if(added>=90)break;
+                    int before=store.events().size();
+                    store.event(candidate);
+                    if(store.events().size()>before){added++;discovered.add(store.view().get(0));}
+                }
+                String status=candidates.isEmpty() && !"EIS_INBOX".equals(site.id())?"Проверено, HTML не подтвержден":"Проверено (экспериментально)";
+                if("EIS_INBOX".equals(site.id()) && System.getenv("ACTIVIST_EIS_INBOX")==null)status="Ожидает настройки";
+                statuses.put(site.id(),state(site,status,added,note));
+            }catch(Exception ex) {
+                statuses.put(site.id(),state(site,"Ошибка доступа / разбора",added,ex.getClass().getSimpleName()+": "+safeMessage(ex)));
+            }
+        }
         notifier.notifyBatch(discovered);
+    }
+    private static Map<String,Object> state(OfficialSources.Site p,String state,int count,String message) {
+        return Json.obj("id",p.id(),"title",p.title(),"url",p.url(),"state",state,"added",count,
+            "message",message,"checkedAt",state.equals("Не проверялся")?"":Instant.now().toString());
     }
     private static void sleep(long millis) throws InterruptedException {Thread.sleep(millis);}
     private static String safeMessage(Exception ex) {String s=ex.getMessage();return s==null?"Unexpected error":s.substring(0,Math.min(s.length(),180));}

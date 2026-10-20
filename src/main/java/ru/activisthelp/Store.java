@@ -46,18 +46,33 @@ public final class Store {
             throw new IllegalArgumentException("Source URL must be http(s)");
         String source=Json.string(input.getOrDefault("source","MANUAL"));
         if(source.length()>100)throw new IllegalArgumentException("Source too long");
-        for(var existing:events)if(!link.isBlank() && link.equals(existing.get("url")))return existing;
+        String externalId=limit(Json.string(input.get("externalId")).trim(),180);
+        for(var existing:events) {
+            String previousId=Json.string(existing.get("externalId"));
+            if(!externalId.isBlank() && externalId.equals(previousId) && source.equals(existing.get("source")))return existing;
+            // Multiple official acts may be printed in the same bulletin, and therefore have one URL.
+            if(externalId.isBlank() && previousId.isBlank() && !link.isBlank() && link.equals(existing.get("url")))return existing;
+        }
         if(events.size()>=10000)throw new IllegalArgumentException("Local prototype event limit 10000");
         Object position=input.get("position");
         if(position!=null)validatePosition(Json.array(position));
         String stage=Classification.stage(title);
+        String explicitStage=Json.string(input.get("stage"));
+        if(Set.of("DISCUSSION","PREPARATION","PROCUREMENT","APPROVAL","WORKS","OTHER").contains(explicitStage))stage=explicitStage;
+        if("PROCUREMENT".equals(Json.string(input.get("documentKind"))))stage="PROCUREMENT";
         String observed=Instant.now().toString();
         Map<String,Object> ev=Json.obj("id",UUID.randomUUID().toString(),"title",title,"url",link,
             "source",source,"description",limit(Json.string(input.get("description")),1400),
             "stage",stage,"firstSeen",observed,"publishedAt",Json.string(input.get("publishedAt")),
             "deadline",Json.string(input.get("deadline")),"position",position,
             "accuracy",position==null?"UNKNOWN":Json.string(input.getOrDefault("accuracy","MANUAL")),
-            "seen",false,"dismissed",false,"note","","demo",Boolean.TRUE.equals(input.get("demo")));
+            "seen",false,"dismissed",false,"note","","demo",Boolean.TRUE.equals(input.get("demo")),
+            "externalId",externalId,"issuedAt",limit(Json.string(input.get("issuedAt")),35),
+            "locationScope",limit(Json.string(input.get("locationScope")),80),
+            "program",limit(Json.string(input.get("program")),200),
+            "authority",limit(Json.string(input.get("authority")),250),
+            "documentKind",limit(Json.string(input.get("documentKind")),100),
+            "requiresReview",Boolean.TRUE.equals(input.get("requiresReview")));
         events.add(0,ev);save();return ev;
     }
     private static String limit(String s,int n){return s.length()<=n?s:s.substring(0,n);}
@@ -103,7 +118,7 @@ public final class Store {
                 }
                 copy.put("relevance",matches.isEmpty()?"OUTSIDE":"MATCH");
             } else {
-                String text=(Json.string(e.get("title"))+" "+Json.string(e.get("description"))).toLowerCase(Locale.ROOT);
+                String text=(Json.string(e.get("title"))+" "+Json.string(e.get("description"))+" "+Json.string(e.get("program"))).toLowerCase(Locale.ROOT);
                 for(var a:areas) {
                     String keywords=Json.string(a.get("keywords"));
                     for(String word:keywords.split("[,;\\n]")) {
