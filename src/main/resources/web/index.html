@@ -23,7 +23,7 @@
       <section class="tab-pane active" data-pane="areas">
         <button class="button area-button" id="startDrawBtn">＋ Выделить территорию на карте</button>
         <div id="drawTools" class="draw-tools hidden"><span id="drawHint">Кликайте по карте, чтобы поставить вершины.</span><button class="button primary" id="finishDrawBtn">Готово</button><button class="button ghost" id="cancelDrawBtn">Отмена</button></div>
-        <div class="mini-title">МОИ ПОЛИГОНЫ</div><div id="areaList" class="area-list"></div>
+        <div class="mini-title">МОИ ПОЛИГОНЫ</div><div id="areaList" class="area-list"></div><input type="file" id="parcelImportFile" accept=".geojson,.json,.txt,.csv" class="hidden" />
         <div class="tip"><span>ⓘ</span><div><strong>Важное ограничение</strong><p>Документ с названием улицы пока не является точкой на карте. Неопределённые события показываются отдельно и не отбрасываются.</p></div></div>
       </section>
       <section class="tab-pane" data-pane="sources"><div class="muted-content">Официальные сайты отслеживаются в экспериментальном режиме: разметка и доступность могут меняться. Закупки пока требуют отдельного коннектора.</div><div id="sourcesList"></div><a class="external-hint" href="https://zakupki.gov.ru/" target="_blank" rel="noopener">ЕИС закупок ↗</a><a class="external-hint" href="https://data.kzn.ru/" target="_blank" rel="noopener">Открытые данные Казани ↗</a></section>

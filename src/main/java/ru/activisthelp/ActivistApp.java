@@ -42,6 +42,33 @@ public final class ActivistApp {
                 else if(method.equals("POST"))reply(ex,201,store.area(body(ex)));
                 else methodNotAllowed(ex);return;
             }
+            if(path.startsWith("/api/areas/")&&path.endsWith("/streets")&&method.equals("POST")) {
+                String id=path.substring("/api/areas/".length(),path.length()-"/streets".length());
+                Map<String,Object> area=store.areaRecord(id);
+                if(area==null) {reply(ex,404,Json.obj("error","Watch area not found"));return;}
+                try {
+                    List<Map<String,Object>> ways=OverpassStreets.fetch(Json.object(area.get("geometry")));
+                    if(ways.isEmpty()&&!Json.array(area.getOrDefault("streets",List.of())).isEmpty()) {
+                        reply(ex,502,Json.obj("error","Overpass не нашёл улиц: сохранён предыдущий справочник, проверьте вручную"));return;
+                    }
+                    reply(ex,200,Json.obj("area",store.updateStreets(id,ways),"ways",ways.size(),
+                        "note","Данные OSM; улица пересекает зону, но участок работ по документу ещё неизвестен"));
+                }catch(IllegalArgumentException err) {throw err;}
+                catch(Exception err) {reply(ex,502,Json.obj("error","Overpass недоступен: "+err.getClass().getSimpleName()));}
+                return;
+            }
+            if(path.startsWith("/api/areas/")&&path.endsWith("/parcels")&&method.equals("POST")) {
+                String id=path.substring("/api/areas/".length(),path.length()-"/parcels".length());
+                Map<String,Object> info=store.importParcels(id,body(ex));
+                reply(ex,info==null?404:200,info==null?Json.obj("error","Watch area not found"):info);
+                return;
+            }
+            if(path.startsWith("/api/areas/")&&path.endsWith("/dictionary")&&method.equals("GET")) {
+                String id=path.substring("/api/areas/".length(),path.length()-"/dictionary".length());
+                Map<String,Object> info=store.areaDictionary(id);
+                reply(ex,info==null?404:200,info==null?Json.obj("error","Watch area not found"):info);
+                return;
+            }
             if(path.startsWith("/api/areas/")&&method.equals("DELETE")) {
                 boolean removed=store.removeArea(path.substring("/api/areas/".length()));
                 reply(ex,removed?200:404,Json.obj("deleted",removed));return;
@@ -64,12 +91,18 @@ public final class ActivistApp {
                 }
                 reply(ex,200,Json.obj("added",added,"duplicates",batch.size()-added));return;
             }
+            if(path.equals("/api/related")&&method.equals("GET")) {
+                String query=ex.getRequestURI().getRawQuery();
+                String id=query!=null&&query.startsWith("eventId=")?query.substring("eventId=".length()):"";
+                if(!id.matches("[a-fA-F0-9-]{36}"))throw new IllegalArgumentException("Provide eventId UUID");
+                reply(ex,200,Json.obj("eventId",id,"candidates",ProjectLinks.candidates(id,store.view())));return;
+            }
             if(path.equals("/api/sources")&&method.equals("GET")) {reply(ex,200,Json.obj("busy",discovery.busy(),"sources",discovery.status()));return;}
             if(path.equals("/api/scan")&&method.equals("POST")) {
                 reply(ex,202,Json.obj("queued",discovery.scan(),"message","Scan runs on server; check /api/sources."));return;
             }
             if(path.equals("/api/export")&&method.equals("GET")) {
-                reply(ex,200,Json.obj("exportedAt",Instant.now().toString(),"areas",store.areas(),"events",store.events()));return;
+                reply(ex,200,Json.obj("exportedAt",Instant.now().toString(),"areas",store.areaRecords(),"events",store.events()));return;
             }
             if(path.startsWith("/api/")) {reply(ex,404,Json.obj("error","Endpoint not found"));return;}
             reply(ex,404,Json.obj("error","Not found"));

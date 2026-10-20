@@ -21,7 +21,89 @@ public final class Store {
             for(Object e:Json.array(all.getOrDefault("events",List.of())))events.add(Json.object(e));
         }
     }
-    public synchronized List<Map<String,Object>> areas(){return new ArrayList<>(areas);}
+    /** Browser gets compact area metadata, not thousands of OSM ways and cadastral footprints. */
+    public synchronized List<Map<String,Object>> areas(){
+        List<Map<String,Object>> out=new ArrayList<>();
+        for(var area:areas)out.add(publicArea(area));
+        return out;
+    }
+    private static Map<String,Object> publicArea(Map<String,Object> area) {
+        Map<String,Object> view=new LinkedHashMap<>(area);
+        List<Object> ways=Json.array(view.getOrDefault("streets",List.of()));
+        List<Object> parcels=Json.array(view.getOrDefault("parcels",List.of()));
+        view.remove("streets");view.remove("parcels");
+        view.put("streetCount",ways.stream().map(s->Json.string(Json.object(s).get("name"))).distinct().count());
+        view.put("parcelCount",parcels.size());
+        return view;
+    }
+    /** Full backup, including authoritative imported source identifiers and geometry. */
+    public synchronized List<Map<String,Object>> areaRecords(){return new ArrayList<>(areas);}
+    public synchronized Map<String,Object> areaRecord(String id) {
+        for(var area:areas)if(id.equals(area.get("id")))return area;
+        return null;
+    }
+    public synchronized Map<String,Object> areaDictionary(String id) {
+        Map<String,Object> area=areaRecord(id);
+        if(area==null)return null;
+        return Json.obj("areaId",id,"name",area.get("name"),"streets",area.getOrDefault("streets",List.of()),
+            "parcels",area.getOrDefault("parcels",List.of()),"osmFetchedAt",area.getOrDefault("osmFetchedAt",""),
+            "parcelsImportedAt",area.getOrDefault("parcelsImportedAt",""));
+    }
+    public synchronized Map<String,Object> updateStreets(String id,List<Map<String,Object>> streets)throws IOException {
+        Map<String,Object> area=areaRecord(id);
+        if(area==null)return null;
+        // Replace OSM streets atomically, never confuse partial HTTP results with an empty street list.
+        area.put("streets",streets);
+        area.put("osmFetchedAt",Instant.now().toString());save();return publicArea(area);
+    }
+    /** Import GeoJSON cadastral polygons or manually assigned cadastral IDs into a watch zone. */
+    public synchronized Map<String,Object> importParcels(String id,Map<String,Object> input)throws IOException {
+        Map<String,Object> area=areaRecord(id);
+        if(area==null)return null;
+        List<Object> records;
+        if("FeatureCollection".equals(input.get("type")))records=Json.array(input.get("features"));
+        else records=Json.array(input.getOrDefault("parcels",List.of()));
+        if(records.size()>300)throw new IllegalArgumentException("Не более 300 участков за запрос");
+        LinkedHashMap<String,Map<String,Object>> existing=new LinkedHashMap<>();
+        for(Object raw:Json.array(area.getOrDefault("parcels",List.of()))) {
+            Map<String,Object> p=Json.object(raw);existing.put(Json.string(p.get("cadastralNumber")),p);
+        }
+        int accepted=0,skipped=0;
+        for(Object raw:records) {
+            Map<String,Object> item=Json.object(raw);
+            Map<String,Object> props="Feature".equals(item.get("type"))?
+                Json.object(item.getOrDefault("properties",Map.of())):item;
+            String number=number(props).replaceAll("\\s+","").trim();
+            if(!GeoDictionary.validCadastral(number)) {skipped++;continue;}
+            Object rawGeom=item.get("geometry");
+            if(rawGeom==null)rawGeom=props.get("geometry");
+            String relation="AREA_DECLARED";
+            if(rawGeom!=null){
+                Map<String,Object> footprint=Json.object(rawGeom);Geo.validate(footprint);
+                if(!Geo.intersectsPolygons(Json.object(area.get("geometry")),footprint)) {skipped++;continue;}
+                relation="INTERSECTS_GEOMETRY";
+            }
+            String source=Json.string(input.getOrDefault("source","Пользовательский импорт GeoJSON/ID"));
+            source=limit(source,120);
+            Map<String,Object> older=existing.get(number);
+            if(older!=null && "INTERSECTS_GEOMETRY".equals(older.get("zoneRelation")) && rawGeom==null) {
+                accepted++;continue; // never overwrite a geometrically linked parcel with an ID-only import
+            }
+            existing.put(number,Json.obj("cadastralNumber",number,"geometry",rawGeom,
+                "source",source,"zoneRelation",relation));
+            accepted++;
+        }
+        if(existing.size()>6000)throw new IllegalArgumentException("Не более 6000 кадастровых номеров в одной зоне");
+        area.put("parcels",new ArrayList<>(existing.values()));
+        area.put("parcelsImportedAt",Instant.now().toString());save();
+        return Json.obj("area",publicArea(area),"accepted",accepted,"skipped",skipped,
+            "note","Номера без границ — ручная привязка, а не подтверждённое пространственное пересечение");
+    }
+    private static String number(Map<String,Object> data) {
+        for(String alias:List.of("cadastralNumber","cadastral_number","cad_num","cadnum","cn","Кадастровый номер","кадастровый номер","кадастровый_номер"))
+            if(data.containsKey(alias))return Json.string(data.get(alias));
+        return "";
+    }
     public synchronized List<Map<String,Object>> events(){return new ArrayList<>(events);}
     public synchronized Map<String,Object> area(Map<String,Object> input) throws IOException {
         String name=Json.string(input.get("name")).trim();
@@ -31,7 +113,7 @@ public final class Store {
         String keywords=Json.string(input.get("keywords"));
         if(keywords.length()>500)throw new IllegalArgumentException("Keywords max length 500");
         Map<String,Object> area=Json.obj("id",UUID.randomUUID().toString(),"name",name,"geometry",geometry,
-            "keywords",keywords,"createdAt",Instant.now().toString());
+            "keywords",keywords,"createdAt",Instant.now().toString(),"streets",new ArrayList<>(),"parcels",new ArrayList<>());
         areas.add(area);save();return area;
     }
     public synchronized boolean removeArea(String id) throws IOException {
@@ -74,7 +156,9 @@ public final class Store {
             "documentKind",limit(Json.string(input.get("documentKind")),100),
             "annexPage",input.get("annexPage") instanceof Number ? ((Number)input.get("annexPage")).intValue() : null,
             "evidenceText",limit(Json.string(input.get("evidenceText")),700),
-            "requiresReview",Boolean.TRUE.equals(input.get("requiresReview")));
+            "requiresReview",Boolean.TRUE.equals(input.get("requiresReview")),
+            "workLocation",limit(Json.string(input.get("workLocation")),400),
+            "documentText",limit(Json.string(input.get("documentText")),12000));
         events.add(0,ev);save();return ev;
     }
     private static String limit(String s,int n){return s.length()<=n?s:s.substring(0,n);}
@@ -105,10 +189,16 @@ public final class Store {
         return null;
     }
     public synchronized List<Map<String,Object>> view() {
+        GeoDictionary index=new GeoDictionary(areas);
         List<Map<String,Object>> out=new ArrayList<>();
         for(var e:events) {
             Map<String,Object> copy=new LinkedHashMap<>(e);
             List<String> matches=new ArrayList<>(),hints=new ArrayList<>();
+            List<Map<String,Object>> evidence=index.find(e);
+            for(var hit:evidence) {
+                String name=Json.string(hit.get("area"));
+                if(!hints.contains(name))hints.add(name);
+            }
             Object p=e.get("position");
             if(p!=null) {
                 List<Object> position=Json.array(p);
@@ -119,19 +209,9 @@ public final class Store {
                     }catch(IllegalArgumentException ignored){}
                 }
                 copy.put("relevance",matches.isEmpty()?"OUTSIDE":"MATCH");
-            } else {
-                String text=(Json.string(e.get("title"))+" "+Json.string(e.get("description"))+" "+Json.string(e.get("program"))).toLowerCase(Locale.ROOT);
-                for(var a:areas) {
-                    String keywords=Json.string(a.get("keywords"));
-                    for(String word:keywords.split("[,;\\n]")) {
-                        if(keywordHint(text,word)) {
-                            hints.add(Json.string(a.get("name")));break;
-                        }
-                    }
-                }
-                copy.put("relevance",hints.isEmpty()?"UNLOCATED":"HINT");
-            }
+            } else copy.put("relevance",hints.isEmpty()?"UNLOCATED":"HINT");
             copy.put("areas",matches);copy.put("hints",hints);
+            copy.put("geoEvidence",evidence);
             out.add(copy);
         }
         return out;
@@ -141,6 +221,9 @@ public final class Store {
         String normalizedText=text.toLowerCase(Locale.ROOT).replace('ё','е');
         String normalizedWord=keyword.toLowerCase(Locale.ROOT).replace('ё','е');
         if(normalizedWord.trim().length()<3)return false;
+        if(GeoDictionary.validCadastral(normalizedWord.trim()))
+            return java.util.regex.Pattern.compile("(?<![0-9])"+java.util.regex.Pattern.quote(normalizedWord.trim())+"(?![0-9])")
+                .matcher(normalizedText).find();
         if(normalizedText.contains(normalizedWord.trim()))return true;
         String[] words=normalizedWord.split("[^\\p{L}0-9]+");
         int matched=0;
