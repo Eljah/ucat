@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="theme-color" content="#101d2b"/>
+  <title>Помощь активисту · Казань</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="/app.css"/>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand"><div class="brand-mark">◎</div><div><strong>Помощь активисту</strong><small>Город под наблюдением · Казань</small></div></div>
+    <div class="top-actions"><span class="sync" id="syncIndicator"><i></i>Локальный прототип</span><button class="button ghost" id="exportBtn">↥ Экспорт</button><button class="button primary" id="scanBtn">↻ Проверить источники</button></div>
+  </header>
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="side-summary"><div class="eyebrow">ВАШИ ТЕРРИТОРИИ</div><h2>Наблюдение за городом</h2><p>Нарисуйте зону интереса и находите документы до начала работ.</p>
+        <div class="stats"><div><strong id="metricAreas">0</strong><span>территорий</span></div><div><strong id="metricMatch">0</strong><span>совпадений</span></div><div><strong id="metricReview">0</strong><span>на проверку</span></div></div>
+      </div>
+      <div class="tabs"><button class="tab active" data-tab="areas">Территории</button><button class="tab" data-tab="sources">Источники</button><button class="tab" data-tab="add">Добавить</button></div>
+      <section class="tab-pane active" data-pane="areas">
+        <button class="button area-button" id="startDrawBtn">＋ Выделить территорию на карте</button>
+        <div id="drawTools" class="draw-tools hidden"><span id="drawHint">Кликайте по карте, чтобы поставить вершины.</span><button class="button primary" id="finishDrawBtn">Готово</button><button class="button ghost" id="cancelDrawBtn">Отмена</button></div>
+        <div class="mini-title">МОИ ПОЛИГОНЫ</div><div id="areaList" class="area-list"></div>
+        <div class="tip"><span>ⓘ</span><div><strong>Важное ограничение</strong><p>Документ с названием улицы пока не является точкой на карте. Неопределённые события показываются отдельно и не отбрасываются.</p></div></div>
+      </section>
+      <section class="tab-pane" data-pane="sources"><div class="muted-content">Официальные сайты отслеживаются в экспериментальном режиме: разметка и доступность могут меняться. Закупки пока требуют отдельного коннектора.</div><div id="sourcesList"></div><a class="external-hint" href="https://zakupki.gov.ru/" target="_blank" rel="noopener">ЕИС закупок ↗</a><a class="external-hint" href="https://data.kzn.ru/" target="_blank" rel="noopener">Открытые данные Казани ↗</a></section>
+      <section class="tab-pane" data-pane="add"><div class="muted-content">Добавьте ссылку на документ или сообщение. Местоположение можно указать на карте после сохранения.</div>
+        <form id="addEventForm"><label>Название документа<input id="eventTitle" required maxlength="700" placeholder="Например, о подготовке проекта межевания..."/></label><label>Ссылка на первоисточник<input id="eventUrl" type="url" placeholder="https://..."/></label><label>Краткое описание<textarea id="eventDescription" rows="4" placeholder="Что известно о проекте..."></textarea></label><button class="button primary full" type="submit">Сохранить событие</button></form>
+        <div class="tip"><span>↗</span><div>В прототипе доступны ручной ввод и импорт из экспериментальных HTML-адаптеров. Автоматического анализа PDF и ЕИС пока нет.</div></div>
+      </section>
+      <div class="sidebar-footer">Java 17 · Maven · локальное хранение <span class="dot">•</span> Версия 0.1</div>
+    </aside>
+    <main class="content">
+      <div class="map-wrap">
+        <div id="map"></div><div id="mapFallback" class="map-fallback hidden"><strong>Карта не загружена</strong><p>Для карты нужен доступ к Leaflet и тайлам OpenStreetMap. Список событий и API доступны без неё.</p></div>
+        <div class="map-heading"><div><span class="eyebrow">ИНТЕРАКТИВНАЯ КАРТА</span><h1>Казань <span class="dash">/</span> территории внимания</h1></div><div class="map-legend"><span><i class="legend area"></i>Полигон</span><span><i class="legend hit"></i>Совпадение</span><span><i class="legend point"></i>Другие точки</span></div></div>
+        <div class="map-footnote">◉ Точка на карте — только после геопривязки. Нет точки ≠ нет события.</div>
+      </div>
+      <section class="feed">
+        <div class="feed-header"><div><div class="eyebrow">СИГНАЛЫ И ДОКУМЕНТЫ</div><h2>Лента изменений <small id="feedCount">0 записей</small></h2></div><div class="feed-controls"><select id="filter"><option value="all">Все события</option><option value="match">В моих полигонах</option><option value="uncertain">Без точной привязки</option><option value="unread">Не просмотрено</option><option value="dismissed">Скрытые</option></select><input id="search" type="search" placeholder="Поиск..."/></div></div>
+        <div id="eventList" class="event-list"></div>
+        <div class="feed-footer">Источник и первая обнаруженная дата сохраняются. Сроки участия необходимо проверять по официальным документам.</div>
+      </section>
+    </main>
+  </div>
+</div>
+<div id="detailBackdrop" class="backdrop hidden"></div>
+<aside id="detailDrawer" class="drawer hidden"></aside>
+<div id="toast" class="toast hidden"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/app.js"></script>
+</body></html>

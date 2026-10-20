@@ -1,0 +1,12 @@
+# Generated artifacts and local data
+/target/
+/data/
+*.class
+*.log
+
+# IDE and OS files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
