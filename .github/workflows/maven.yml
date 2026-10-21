@@ -25,4 +25,6 @@ jobs:
           java -ea -cp target/classes:target/test-classes ru.activisthelp.SmokeTest
           java -ea -cp target/classes:target/test-classes ru.activisthelp.RoadSourcesTest
           java -ea -cp target/classes:target/test-classes ru.activisthelp.GeoEnrichmentTest
+          java -ea -cp target/classes:target/test-classes ru.activisthelp.LinearProjectTest
+          java -ea -cp target/classes:target/test-classes ru.activisthelp.ArchivePilotTest
           java -ea -cp target/classes:target/test-classes:target/pomosh-aktivistu-0.1.0.jar ru.activisthelp.EisAndAnnexTest

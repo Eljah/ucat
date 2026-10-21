@@ -47,12 +47,14 @@ public final class ActivistApp {
                 Map<String,Object> area=store.areaRecord(id);
                 if(area==null) {reply(ex,404,Json.obj("error","Watch area not found"));return;}
                 try {
-                    List<Map<String,Object>> ways=OverpassStreets.fetch(Json.object(area.get("geometry")));
+                    OverpassStreets.Network network=OverpassStreets.fetchNetwork(Json.object(area.get("geometry")));
+                    List<Map<String,Object>> ways=network.streets();
                     if(ways.isEmpty()&&!Json.array(area.getOrDefault("streets",List.of())).isEmpty()) {
                         reply(ex,502,Json.obj("error","Overpass не нашёл улиц: сохранён предыдущий справочник, проверьте вручную"));return;
                     }
-                    reply(ex,200,Json.obj("area",store.updateStreets(id,ways),"ways",ways.size(),
-                        "note","Данные OSM; улица пересекает зону, но участок работ по документу ещё неизвестен"));
+                    reply(ex,200,Json.obj("area",store.updateStreetNetwork(id,ways,network.contextWays()),
+                        "ways",ways.size(),"contextWays",network.contextWays().size(),
+                        "note","Загружены дороги внутри полигона и ближайшая сеть для проверки отрезков. OSM не подтверждает границы проектируемых работ."));
                 }catch(IllegalArgumentException err) {throw err;}
                 catch(Exception err) {reply(ex,502,Json.obj("error","Overpass недоступен: "+err.getClass().getSimpleName()));}
                 return;
@@ -72,6 +74,25 @@ public final class ActivistApp {
             if(path.startsWith("/api/areas/")&&method.equals("DELETE")) {
                 boolean removed=store.removeArea(path.substring("/api/areas/".length()));
                 reply(ex,removed?200:404,Json.obj("deleted",removed));return;
+            }
+            if(path.equals("/api/projects")) {
+                if(method.equals("GET"))reply(ex,200,store.projects());
+                else if(method.equals("POST"))reply(ex,201,store.createProject(body(ex)));
+                else methodNotAllowed(ex);return;
+            }
+            if(path.startsWith("/api/projects/")) {
+                String suffix=path.substring("/api/projects/".length());
+                if(suffix.endsWith("/events")) {
+                    String projectId=suffix.substring(0,suffix.length()-"/events".length());
+                    if(!method.equals("POST")&&!method.equals("DELETE")) {methodNotAllowed(ex);return;}
+                    String eventId=Json.string(body(ex).get("eventId"));
+                    Map<String,Object> result=store.linkProject(projectId,eventId,method.equals("POST"));
+                    reply(ex,result==null?404:200,result==null?Json.obj("error","Project not found"):result);return;
+                }
+                if(method.equals("GET")){
+                    Map<String,Object> project=store.project(suffix);
+                    reply(ex,project==null?404:200,project==null?Json.obj("error","Project not found"):project);
+                }else methodNotAllowed(ex);return;
             }
             if(path.equals("/api/events")) {
                 if(method.equals("GET"))reply(ex,200,store.view());

@@ -9,3 +9,6 @@
 .area-card{flex-wrap:wrap}.area-card .area-body{flex:1 1 calc(100% - 56px)}
 .area-card button[data-streets],.area-card button[data-parcels]{font-size:11px;padding:6px 8px;border:1px solid #d4e5e5;border-radius:6px;background:#f0f8f8;color:#286e77}
 .area-card button[data-streets]:disabled{opacity:.55;cursor:wait}
+
+/* Project timelines and inferred OSM road corridors. */
+.project-timeline-item{border-left:3px solid #83b1ba;padding:7px 0 15px 12px;margin:9px 0}.project-timeline-item>div{color:#708897;font-size:11px}.project-timeline-item>.button{margin-top:7px;text-align:left;white-space:normal}.drawer-section select{max-width:100%;width:100%;border:1px solid var(--border);padding:10px;border-radius:7px;background:white}.event-card.likely_outside .event-accent{background:#a6b9b5}

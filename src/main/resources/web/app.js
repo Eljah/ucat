@@ -4,13 +4,46 @@ const $ = sel => document.querySelector(sel);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const STAGES={DISCUSSION:'Обсуждение',PREPARATION:'Подготовка',PROCUREMENT:'Закупка',APPROVAL:'Утверждено',WORKS:'Работы',OTHER:'Другое'};
 const SOURCE_NAMES={DEMO:'Демонстрация',DISPUTE:'dispute.kzn.ru',DISPUTE_EXAMPLE:'Пример · dispute.kzn.ru',PRAVO:'pravo.tatarstan.ru',GRAD:'kzn.ru',DVOR:'dvor.tatar',KZN_ACT:'Акты Казани',RT_MINTRANS:'Миндортранс РТ',EIS_ROADS:'ЕИС · HTML',EIS_SOAP:'ЕИС · SOAP',KZN_PDF_ANNEX:'PDF актов Казани',RT_PDF_ANNEX:'PDF Кабмина РТ',LOCAL_PDF_ANNEX:'Локальный PDF',EIS_INBOX:'ЕИС · архив',MANUAL:'Вручную'};
-let areas=[],events=[],sources=[],map=null,areaLayer=null,markerLayer=null,drawingLayer=null,drawPoints=[],drawMode=false,placeEventId=null,chosen=null;
+let areas=[],events=[],projects=[],sources=[],map=null,areaLayer=null,markerLayer=null,drawingLayer=null,routeLayer=null,drawPoints=[],drawMode=false,placeEventId=null,chosen=null;
 let sourceBusy=false,lastSourceCheck=0,noticeTimer,parcelAreaId=null;
 function h(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function date(s){if(!s)return 'дата неизвестна';let v=new Date(s);return isNaN(v)?h(s):v.toLocaleDateString('ru-RU',{day:'2-digit',month:'short',year:'numeric'});}
 async function api(path,method='GET',obj){let res=await fetch(path,{method,headers:obj?{'Content-Type':'application/json'}:{},body:obj?JSON.stringify(obj):undefined});let body=await res.json();if(!res.ok)throw new Error(body.error||('HTTP '+res.status));return body;}
 function toast(message){let el=$('#toast');el.textContent=message;el.classList.remove('hidden');clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>el.classList.add('hidden'),4400);}
-async function refresh(){try{[areas,events]=await Promise.all([api('/api/areas'),api('/api/events')]);renderAreas();renderEvents();renderMap();renderStats();}catch(e){toast('Ошибка загрузки: '+e.message);}}
+async function refresh(){try{[areas,events,projects]=await Promise.all([api('/api/areas'),api('/api/events'),api('/api/projects')]);renderAreas();renderProjects();renderEvents();renderMap();renderStats();}catch(e){toast('Ошибка загрузки: '+e.message);}}
+function renderProjects(){
+ const wrap=$('#projectList');
+ if(!projects.length){wrap.innerHTML='<p class="empty">Проектов пока нет. Создайте проект или откройте событие и добавьте его.</p>';return;}
+ wrap.innerHTML=projects.map(p=>`<div class="area-card"><span class="area-chip">▤</span><div class="area-body"><strong>${h(p.name)}</strong><p>${(p.timeline||[]).length} документов · ручное объединение</p></div><button title="Открыть историю" data-project="${h(p.id)}">›</button></div>`).join('');
+}
+async function createProject(name){if(!name)return null;let item=await api('/api/projects','POST',{name});await refresh();return item;}
+async function createProjectFromEvent(event){
+ const name=prompt('Название истории проекта',event.title.slice(0,160));if(!name?.trim())return;
+ try{const p=await createProject(name.trim());await api('/api/projects/'+encodeURIComponent(p.id)+'/events','POST',{eventId:event.id});await refresh();selectEvent(event.id);toast('Проект создан и документ включён в историю.');}
+ catch(err){toast('Проект: '+err.message);}
+}
+async function attachToProject(eventId){
+ const select=$('#projectSelect');const projectId=select?.value;
+ if(!projectId){toast('Выберите проект.');return;}
+ try{await api('/api/projects/'+encodeURIComponent(projectId)+'/events','POST',{eventId});await refresh();selectEvent(eventId);toast('Документ включён в выбранный проект.');}
+ catch(err){toast('Проект: '+err.message);}
+}
+function openProject(id){
+ const p=projects.find(x=>x.id===id);if(!p)return;
+ chosen='project:'+id;
+ const timeline=(p.timeline||[]).map(e=>`<div class="project-timeline-item"><div><strong>${date(e.publishedAt||e.issuedAt||e.firstSeen)}</strong> · ${h(STAGES[e.stage]||e.stage)}</div><button class="button" data-project-event="${h(e.id)}">${h(e.title)}</button><button class="button ghost" data-project-unlink="${h(e.id)}">Убрать из проекта</button></div>`).join('');
+ $('#detailDrawer').innerHTML=`<div class="drawer-top"><strong>ИСТОРИЯ ПРОЕКТА</strong><button class="close" id="closeDrawer">×</button></div><h2>${h(p.name)}</h2><p>${h(p.notes||'Состав проекта подтверждён вручную. Автоматическая связь по общей улице — только кандидат.')}</p><div class="drawer-section"><h3>Хронология (${(p.timeline||[]).length})</h3>${timeline||'<p>Документов пока нет.</p>'}</div>`;
+ $('#detailBackdrop').classList.remove('hidden');$('#detailDrawer').classList.remove('hidden');
+ $('#closeDrawer').onclick=closeDrawer;
+ $('#detailDrawer').onclick=async ev=>{
+  const link=ev.target.closest('[data-project-event]'),remove=ev.target.closest('[data-project-unlink]');
+  if(link){selectEvent(link.dataset.projectEvent);return;}
+  if(remove&&confirm('Убрать документ из истории проекта?')){
+   try{await api('/api/projects/'+encodeURIComponent(id)+'/events','DELETE',{eventId:remove.dataset.projectUnlink});await refresh();openProject(id);}
+   catch(err){toast(err.message);}
+  }
+ };
+}
 function renderStats(){let active=events.filter(e=>!e.dismissed);let matched=active.filter(e=>e.relevance==='MATCH').length;let uncertain=active.filter(e=>e.relevance==='UNLOCATED'||e.relevance==='HINT').length;$('#metricAreas').textContent=areas.length;$('#metricMatch').textContent=matched;$('#metricReview').textContent=uncertain;}
 function renderAreas(){let wrap=$('#areaList');if(!areas.length){wrap.innerHTML='<p class="empty">Пока нет территорий. Нарисуйте первый полигон.</p>';return;}wrap.innerHTML=areas.map((a,i)=>`<div class="area-card"><span class="area-chip">⬡</span><div class="area-body"><strong>${h(a.name)}</strong><p>${a.keywords?'Метки: '+h(a.keywords):'Без ручных меток'} · Улиц OSM: ${h(a.streetCount||0)} · Участков: ${h(a.parcelCount||0)}</p></div><button title="Загрузить названия улиц OSM (Overpass, вручную)" data-streets="${h(a.id)}">Улицы</button><button title="Импорт кадастровых номеров/GeoJSON" data-parcels="${h(a.id)}">Участки</button><button title="Показать на карте" data-focus="${h(a.id)}">⌖</button><button title="Удалить территорию" data-remove="${h(a.id)}">×</button></div>`).join('');}
 function stageSort(e){let score=0;if(e.relevance==='MATCH')score+=80;if(e.relevance==='HINT')score+=50;if(e.relevance==='UNLOCATED')score+=30;if(e.stage==='PREPARATION'||e.stage==='DISCUSSION')score+=25;if(!e.seen)score+=10;return score;}
@@ -21,13 +54,13 @@ function filterEvents(){let f=$('#filter').value,q=$('#search').value.trim().toL
  if(f==='unread'&&e.seen)return false;
  return !q || [e.title,e.description,e.source,e.program||'',e.authority||'',...e.areas,...e.hints].join(' ').toLowerCase().includes(q);
 }).sort((a,b)=>stageSort(b)-stageSort(a)||b.firstSeen.localeCompare(a.firstSeen));}
-function statusText(e){if(e.relevance==='MATCH')return '● В вашей зоне';if(e.relevance==='HINT')return '◐ Есть текстовая подсказка';if(e.relevance==='OUTSIDE')return '○ Вне полигонов';return '◌ Требует геопривязки';}
+function statusText(e){if(e.relevance==='MATCH')return '● В вашей зоне';if(e.relevance==='HINT')return '◐ Есть текстовая подсказка';if(e.relevance==='LIKELY_OUTSIDE')return '◌ Вероятно вне зоны по сети OSM — проверьте';if(e.relevance==='OUTSIDE')return '○ Вне полигонов';return '◌ Требует геопривязки';}
 function renderEvents(){let view=filterEvents();$('#feedCount').textContent=view.length+' / '+events.length;let wrap=$('#eventList');if(!view.length){wrap.innerHTML='<div class="empty">По этому фильтру событий нет. Попробуйте «Все события».</div>';return;}
 wrap.innerHTML=view.map(e=>`<article class="event-card ${e.relevance.toLowerCase()} ${e.seen?'seen':''}" data-event="${h(e.id)}" tabindex="0" role="button" aria-label="Открыть событие"><div class="event-accent"></div><div class="event-main"><div class="event-topline"><span class="pill ${e.stage.toLowerCase()}">${h(STAGES[e.stage]||'Событие')}</span>${e.demo?'<span class="pill demo">Пример</span>':''}<span class="source-label">${h(SOURCE_NAMES[e.source]||e.source)} · ${date(e.publishedAt||e.firstSeen)}</span></div><h3>${h(e.title)}</h3><p>${h(statusText(e))} · ${h(e.description)}</p></div><div class="event-side"><span>${e.seen?'Просмотрено':'Новое'}</span><span class="arrow">›</span></div></article>`).join('');}
 function initMap(){if(!window.L){$('#mapFallback').classList.remove('hidden');return;}
 map=L.map('map',{zoomControl:true,doubleClickZoom:false}).setView([55.798,49.107],12);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
-areaLayer=L.featureGroup().addTo(map);markerLayer=L.featureGroup().addTo(map);drawingLayer=L.featureGroup().addTo(map);
+areaLayer=L.featureGroup().addTo(map);markerLayer=L.featureGroup().addTo(map);drawingLayer=L.featureGroup().addTo(map);routeLayer=L.featureGroup().addTo(map);
 map.on('click',event=>{
  if(placeEventId){const id=placeEventId;placeEventId=null;map.getContainer().style.cursor='';
     api('/api/events/'+encodeURIComponent(id),'PATCH',{position:[event.latlng.lng,event.latlng.lat]}).then(()=>refresh().then(()=>{selectEvent(id);toast('Точка сохранена. Совпадение с полигонами рассчитано.');})).catch(e=>toast(e.message));return;}
@@ -45,13 +78,26 @@ async function finishDrawing(){if(drawPoints.length<3){toast('Нужны хот�
  let keywords=prompt('Необязательные ключевые слова (улицы, кадастровые номера) через ;','')||'';
  let ring=[...drawPoints,drawPoints[0]],geometry={type:'Polygon',coordinates:[ring]};
  try{await api('/api/areas','POST',{name,keywords,geometry});stopDrawing();await refresh();toast('Полигон сохранён. Текстовые подсказки не заменяют геопривязку.');}catch(e){toast(e.message);}}
-function closeDrawer(){chosen=null;$('#detailBackdrop').classList.add('hidden');$('#detailDrawer').classList.add('hidden');}
-function selectEvent(id){const e=events.find(e=>e.id===id);if(!e)return;chosen=id;const areaInfo=e.relevance==='MATCH'?'Совпадает с: '+e.areas.join(', '):e.relevance==='HINT'?'Найдены географические/текстовые признаки (требуют проверки): '+e.hints.join(', '):e.relevance==='UNLOCATED'?'Не определена география: событие нельзя исключать из ваших территорий.':'Точка находится вне отмеченных полигонов.';
+function closeDrawer(){if(routeLayer)routeLayer.clearLayers();chosen=null;$('#detailBackdrop').classList.add('hidden');$('#detailDrawer').classList.add('hidden');}
+function selectEvent(id){const e=events.find(e=>e.id===id);if(!e)return;chosen=id;const areaInfo=e.relevance==='MATCH'?'Совпадает с: '+e.areas.join(', '):e.relevance==='HINT'?'Найдены географические/текстовые признаки (требуют проверки): '+e.hints.join(', '):e.relevance==='UNLOCATED'?'Не определена география: событие нельзя исключать из ваших территорий.':e.relevance==='LIKELY_OUTSIDE'?'Предполагаемый участок дороги по OSM находится вне полигона; проверьте официальные границы работ.':'Точка находится вне отмеченных полигонов.';
 const evidenceHtml=(e.geoEvidence||[]).length?`<div class="drawer-section"><h3>Почему событие найдено</h3>${e.geoEvidence.slice(0,12).map(x=>`<p><strong>${h(x.area)}</strong> · ${h(x.kind)} · «${h(x.matchedText)}» (${h(x.score)})<br>${h(x.explanation)}</p>`).join('')}<p><small>Совпадение названия или кадастрового номера не доказывает геометрию самих работ.</small></p></div>`:'';
+const span=e.linearWork;
+const linearHtml=span?`<div class="drawer-section"><h3>Границы дорожного участка</h3><p><strong>${h(span.stage||'Без выделенного этапа')}</strong> · ${h(span.type)}</p><p>Основная улица: ${h(span.mainRoad||'не установлена')}<br>От: ${h(span.from?.name||'не установлено')}<br>До: ${h(span.to?.name||'не установлено')}</p><small>Последний этап/участок в названии важнее общего названия маршрута. Км и номера домов требуют отдельной геопривязки.</small></div>`:'';
+const corridorHtml=(e.corridors||[]).length?`<div class="drawer-section"><h3>Линейная привязка по OSM</h3>${e.corridors.map(c=>`<p><strong>${h(c.area)}</strong> · ${h(c.status)} · ≈ ${h(c.lengthMeters)} м<br>${h(c.explanation)}</p>`).join('')}<button class="button" id="showRoute">Показать предполагаемый участок на карте</button></div>`:'';
+const projectHtml=`<div class="drawer-section"><h3>История проекта</h3><p>Объединение документов подтверждается вами. Одной общей улицы недостаточно.</p><select id="projectSelect"><option value="">Выбрать существующий проект</option>${projects.map(p=>`<option value="${h(p.id)}">${h(p.name)} · ${(p.timeline||[]).length} документов</option>`).join('')}</select><div class="drawer-buttons"><button class="button" id="attachProject">Добавить в проект</button><button class="button" id="newProject">＋ Новый проект</button></div></div>`;
 const safeUrl=/^https?:\/\//i.test(e.url||'')?e.url:null;
-$('#detailDrawer').innerHTML=`<div class="drawer-top"><strong>КАРТОЧКА СОБЫТИЯ</strong><button class="close" id="closeDrawer" aria-label="Закрыть">×</button></div><div style="margin-top:24px"><span class="pill ${e.stage.toLowerCase()}">${h(STAGES[e.stage]||'Другое')}</span> ${e.demo?'<span class="pill demo">Иллюстрация/пример</span>':''}</div><h2>${h(e.title)}</h2><div class="meta"><span>Источник: ${h(SOURCE_NAMES[e.source]||e.source)}</span><span>Обнаружено: ${date(e.firstSeen)}</span><span>Опубликовано: ${date(e.publishedAt)}</span>${e.issuedAt?`<span>Дата акта: ${date(e.issuedAt)}</span>`:''}${e.program?`<span>Программа: ${h(e.program)}</span>`:''}${e.authority?`<span>Орган/заказчик: ${h(e.authority)}</span>`:''}${e.locationScope?`<span>Привязка источника: ${h(e.locationScope)}</span>`:''}${e.annexPage?`<span>Страница приложения: ${h(e.annexPage)}</span>`:''}</div><p>${h(e.description||'Описание отсутствует. Проверьте документ.')}</p>${e.requiresReview?'<p><strong>Требуется проверить географию и приложения к документу.</strong></p>':''}<div class="tag ${e.relevance==='UNLOCATED'?'warning':''}">${h(areaInfo)}</div>${evidenceHtml}<div class="drawer-buttons">${safeUrl?`<a class="button primary" target="_blank" rel="noopener noreferrer" href="${h(safeUrl)}">Открыть первоисточник ↗</a>`:''}<button class="button" id="geoEvent">⌖ Указать точку</button><button class="button" id="seenEvent">${e.seen?'↶ Не просмотрено':'✓ Просмотрено'}</button><button class="button" id="dismissEvent">${e.dismissed?'↶ Вернуть в ленту':'⊘ Скрыть'}</button></div><div class="drawer-section"><h3>Срок реакции</h3><p>Дата не извлекается автоматически из HTML: переносите её только из первоисточника. Наличие обсуждений не означает, что любой человек вправе формально участвовать.</p><input id="eventDeadline" type="date" value="${/^\d{4}-\d{2}-\d{2}$/.test(e.deadline||'')?h(e.deadline):''}"/><button class="button" id="deadlineSave">Сохранить</button></div><div class="drawer-section"><h3>Ваши заметки и действия</h3><textarea id="eventNote" maxlength="2500" placeholder="Что нужно изучить? Какие вопросы задать?">${h(e.note)}</textarea><div class="drawer-buttons"><button class="button primary" id="noteSave">Сохранить заметку</button></div></div><div class="drawer-section"><p>Статус проекта определяется по ключевым словам. «Подготовка», «Обсуждение» и «Утверждение» должны затем объединяться в историю одного проекта.</p></div>`;
+$('#detailDrawer').innerHTML=`<div class="drawer-top"><strong>КАРТОЧКА СОБЫТИЯ</strong><button class="close" id="closeDrawer" aria-label="Закрыть">×</button></div><div style="margin-top:24px"><span class="pill ${e.stage.toLowerCase()}">${h(STAGES[e.stage]||'Другое')}</span> ${e.demo?'<span class="pill demo">Иллюстрация/пример</span>':''}</div><h2>${h(e.title)}</h2><div class="meta"><span>Источник: ${h(SOURCE_NAMES[e.source]||e.source)}</span><span>Обнаружено: ${date(e.firstSeen)}</span><span>Опубликовано: ${date(e.publishedAt)}</span>${e.issuedAt?`<span>Дата акта: ${date(e.issuedAt)}</span>`:''}${e.program?`<span>Программа: ${h(e.program)}</span>`:''}${e.authority?`<span>Орган/заказчик: ${h(e.authority)}</span>`:''}${e.locationScope?`<span>Привязка источника: ${h(e.locationScope)}</span>`:''}${e.annexPage?`<span>Страница приложения: ${h(e.annexPage)}</span>`:''}</div><p>${h(e.description||'Описание отсутствует. Проверьте документ.')}</p>${e.requiresReview?'<p><strong>Требуется проверить географию и приложения к документу.</strong></p>':''}<div class="tag ${e.relevance==='UNLOCATED'?'warning':''}">${h(areaInfo)}</div>${evidenceHtml}${linearHtml}${corridorHtml}${projectHtml}<div class="drawer-buttons">${safeUrl?`<a class="button primary" target="_blank" rel="noopener noreferrer" href="${h(safeUrl)}">Открыть первоисточник ↗</a>`:''}<button class="button" id="geoEvent">⌖ Указать точку</button><button class="button" id="seenEvent">${e.seen?'↶ Не просмотрено':'✓ Просмотрено'}</button><button class="button" id="dismissEvent">${e.dismissed?'↶ Вернуть в ленту':'⊘ Скрыть'}</button></div><div class="drawer-section"><h3>Срок реакции</h3><p>Дата не извлекается автоматически из HTML: переносите её только из первоисточника. Наличие обсуждений не означает, что любой человек вправе формально участвовать.</p><input id="eventDeadline" type="date" value="${/^\d{4}-\d{2}-\d{2}$/.test(e.deadline||'')?h(e.deadline):''}"/><button class="button" id="deadlineSave">Сохранить</button></div><div class="drawer-section"><h3>Ваши заметки и действия</h3><textarea id="eventNote" maxlength="2500" placeholder="Что нужно изучить? Какие вопросы задать?">${h(e.note)}</textarea><div class="drawer-buttons"><button class="button primary" id="noteSave">Сохранить заметку</button></div></div><div class="drawer-section"><p>Статус проекта определяется по ключевым словам. «Подготовка», «Обсуждение» и «Утверждение» должны затем объединяться в историю одного проекта.</p></div>`;
 $('#detailBackdrop').classList.remove('hidden');$('#detailDrawer').classList.remove('hidden');
 $('#closeDrawer').onclick=closeDrawer;
+$('#attachProject').onclick=()=>attachToProject(e.id);
+$('#newProject').onclick=()=>createProjectFromEvent(e);
+const showRoute=$('#showRoute');
+if(showRoute)showRoute.onclick=()=>{
+ if(!map||!routeLayer){toast('Карта не загружена');return;}
+ routeLayer.clearLayers();let lines=(e.corridors||[]).filter(x=>x.line?.length);
+ for(const c of lines){let layer=L.polyline(c.line.map(p=>[p[1],p[0]]),{color:'#974daa',weight:5,dashArray:'6 5'}).addTo(routeLayer);layer.bindPopup('Предполагаемый участок OSM, не юридическая граница работ');}
+ if(lines.length)map.fitBounds(routeLayer.getBounds(),{padding:[50,50]});else toast('Геометрия участка пока не восстановлена.');
+};
 $('#seenEvent').onclick=()=>updateEvent(e.id,{seen:!e.seen});
 $('#dismissEvent').onclick=()=>updateEvent(e.id,{dismissed:!e.dismissed});
 $('#noteSave').onclick=()=>updateEvent(e.id,{note:$('#eventNote').value});
@@ -72,6 +118,8 @@ async function sourceStatus(){try{const data=await api('/api/sources');sourceBus
 async function scan(){try{let ans=await api('/api/scan','POST',{});toast(ans.queued?'Запущена проверка. Статусы видны на вкладке «Источники».':'Проверка уже выполняется.');await sourceStatus();}catch(e){toast(e.message);}}
 async function exportData(){try{let data=await api('/api/export');let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});let url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='aktivist-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){toast(e.message);}}
 function bind(){ $$('.tab').forEach(tab=>tab.onclick=()=>{$$('.tab').forEach(t=>t.classList.toggle('active',t===tab));$$('.tab-pane').forEach(p=>p.classList.toggle('active',p.dataset.pane===tab.dataset.tab));});
+$('#projectList').addEventListener('click',e=>{const p=e.target.closest('[data-project]');if(p)openProject(p.dataset.project);});
+$('#addProjectBtn').onclick=async()=>{const name=prompt('Название нового проекта','Новый дорожный проект');if(!name?.trim())return;try{await createProject(name.trim());toast('Проект создан. Добавляйте документы из карточек событий.');}catch(err){toast(err.message);}};
 $('#startDrawBtn').onclick=startDrawing;$('#cancelDrawBtn').onclick=stopDrawing;$('#finishDrawBtn').onclick=finishDrawing;$('#scanBtn').onclick=scan;$('#exportBtn').onclick=exportData;$('#detailBackdrop').onclick=closeDrawer;
 $('#filter').onchange=renderEvents;$('#search').oninput=renderEvents;
 $('#eventList').addEventListener('click',e=>{const card=e.target.closest('[data-event]');if(card)selectEvent(card.dataset.event);});
@@ -83,7 +131,7 @@ $('#areaList').addEventListener('click',async e=>{
     if(!confirm('Загрузить геометрию и названия улиц OpenStreetMap для этой зоны через Overpass?'))return;
     osm.disabled=true;toast('Запрос улиц отправлен в Overpass...');
     try{const r=await api('/api/areas/'+encodeURIComponent(id)+'/streets','POST',{});
-      await refresh();toast('В зоне найдено '+r.ways+' участков именованных дорог OSM.');}
+      await refresh();toast('В зоне найдено '+r.ways+' дорожных OSM-отрезков, контекст: '+r.contextWays+'.');}
     catch(error){toast('Справочник улиц: '+error.message);}finally{osm.disabled=false;}
  }else if(cad){parcelAreaId=cad.dataset.parcels;$('#parcelImportFile').value='';$('#parcelImportFile').click();}
  else if(del){if(!confirm('Удалить полигон наблюдения? Сами события останутся.'))return;

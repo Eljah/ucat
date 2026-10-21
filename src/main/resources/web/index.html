@@ -19,17 +19,18 @@
       <div class="side-summary"><div class="eyebrow">ВАШИ ТЕРРИТОРИИ</div><h2>Наблюдение за городом</h2><p>Нарисуйте зону интереса и находите документы до начала работ.</p>
         <div class="stats"><div><strong id="metricAreas">0</strong><span>территорий</span></div><div><strong id="metricMatch">0</strong><span>совпадений</span></div><div><strong id="metricReview">0</strong><span>на проверку</span></div></div>
       </div>
-      <div class="tabs"><button class="tab active" data-tab="areas">Территории</button><button class="tab" data-tab="sources">Источники</button><button class="tab" data-tab="add">Добавить</button></div>
+      <div class="tabs"><button class="tab active" data-tab="areas">Территории</button><button class="tab" data-tab="projects">Проекты</button><button class="tab" data-tab="sources">Источники</button><button class="tab" data-tab="add">Добавить</button></div>
       <section class="tab-pane active" data-pane="areas">
         <button class="button area-button" id="startDrawBtn">＋ Выделить территорию на карте</button>
         <div id="drawTools" class="draw-tools hidden"><span id="drawHint">Кликайте по карте, чтобы поставить вершины.</span><button class="button primary" id="finishDrawBtn">Готово</button><button class="button ghost" id="cancelDrawBtn">Отмена</button></div>
         <div class="mini-title">МОИ ПОЛИГОНЫ</div><div id="areaList" class="area-list"></div><input type="file" id="parcelImportFile" accept=".geojson,.json,.txt,.csv" class="hidden" />
         <div class="tip"><span>ⓘ</span><div><strong>Важное ограничение</strong><p>Документ с названием улицы пока не является точкой на карте. Неопределённые события показываются отдельно и не отбрасываются.</p></div></div>
       </section>
+      <section class="tab-pane" data-pane="projects"><div class="muted-content">Связывайте документы в историю проекта только после проверки основания связи. Одно упоминание улицы недостаточно.</div><button id="addProjectBtn" class="button area-button">＋ Создать проект</button><div class="mini-title">ИСТОРИИ ПРОЕКТОВ</div><div id="projectList" class="area-list"></div></section>
       <section class="tab-pane" data-pane="sources"><div class="muted-content">Официальные сайты отслеживаются в экспериментальном режиме: разметка и доступность могут меняться. Закупки пока требуют отдельного коннектора.</div><div id="sourcesList"></div><a class="external-hint" href="https://zakupki.gov.ru/" target="_blank" rel="noopener">ЕИС закупок ↗</a><a class="external-hint" href="https://data.kzn.ru/" target="_blank" rel="noopener">Открытые данные Казани ↗</a></section>
       <section class="tab-pane" data-pane="add"><div class="muted-content">Добавьте ссылку на документ или сообщение. Местоположение можно указать на карте после сохранения.</div>
         <form id="addEventForm"><label>Название документа<input id="eventTitle" required maxlength="700" placeholder="Например, о подготовке проекта межевания..."/></label><label>Ссылка на первоисточник<input id="eventUrl" type="url" placeholder="https://..."/></label><label>Краткое описание<textarea id="eventDescription" rows="4" placeholder="Что известно о проекте..."></textarea></label><button class="button primary full" type="submit">Сохранить событие</button></form>
-        <div class="tip"><span>↗</span><div>В прототипе доступны ручной ввод и импорт из экспериментальных HTML-адаптеров. Автоматического анализа PDF и ЕИС пока нет.</div></div>
+        <div class="tip"><span>↗</span><div>Сбор PDF и ЕИС экспериментальный. Теперь доступна ручная проверка участков дорог и объединение документов в проекты.</div></div>
       </section>
       <div class="sidebar-footer">Java 17 · Maven · локальное хранение <span class="dot">•</span> Версия 0.1</div>
     </aside>

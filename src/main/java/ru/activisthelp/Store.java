@@ -11,6 +11,7 @@ public final class Store {
     private final Path file;
     private final List<Map<String,Object>> areas=new ArrayList<>();
     private final List<Map<String,Object>> events=new ArrayList<>();
+    private final List<Map<String,Object>> projects=new ArrayList<>();
 
     public Store(Path directory) throws IOException {
         Files.createDirectories(directory);
@@ -19,6 +20,7 @@ public final class Store {
             Map<String,Object> all=Json.object(Json.parse(Files.readString(file,StandardCharsets.UTF_8)));
             for(Object a:Json.array(all.getOrDefault("areas",List.of())))areas.add(Json.object(a));
             for(Object e:Json.array(all.getOrDefault("events",List.of())))events.add(Json.object(e));
+            for(Object pr:Json.array(all.getOrDefault("projects",List.of())))projects.add(Json.object(pr));
         }
     }
     /** Browser gets compact area metadata, not thousands of OSM ways and cadastral footprints. */
@@ -31,9 +33,10 @@ public final class Store {
         Map<String,Object> view=new LinkedHashMap<>(area);
         List<Object> ways=Json.array(view.getOrDefault("streets",List.of()));
         List<Object> parcels=Json.array(view.getOrDefault("parcels",List.of()));
-        view.remove("streets");view.remove("parcels");
+        view.remove("streets");view.remove("parcels");view.remove("contextWays");
         view.put("streetCount",ways.stream().map(s->Json.string(Json.object(s).get("name"))).distinct().count());
         view.put("parcelCount",parcels.size());
+        view.put("contextWayCount",Json.array(area.getOrDefault("contextWays",List.of())).size());
         return view;
     }
     /** Full backup, including authoritative imported source identifiers and geometry. */
@@ -46,14 +49,19 @@ public final class Store {
         Map<String,Object> area=areaRecord(id);
         if(area==null)return null;
         return Json.obj("areaId",id,"name",area.get("name"),"streets",area.getOrDefault("streets",List.of()),
-            "parcels",area.getOrDefault("parcels",List.of()),"osmFetchedAt",area.getOrDefault("osmFetchedAt",""),
+            "parcels",area.getOrDefault("parcels",List.of()),"contextWayCount",Json.array(area.getOrDefault("contextWays",List.of())).size(),"osmFetchedAt",area.getOrDefault("osmFetchedAt",""),
             "parcelsImportedAt",area.getOrDefault("parcelsImportedAt",""));
     }
     public synchronized Map<String,Object> updateStreets(String id,List<Map<String,Object>> streets)throws IOException {
+        return updateStreetNetwork(id,streets,List.of());
+    }
+    public synchronized Map<String,Object> updateStreetNetwork(String id,List<Map<String,Object>> streets,
+                                                   List<Map<String,Object>> contextWays)throws IOException {
         Map<String,Object> area=areaRecord(id);
         if(area==null)return null;
         // Replace OSM streets atomically, never confuse partial HTTP results with an empty street list.
         area.put("streets",streets);
+        area.put("contextWays",contextWays);
         area.put("osmFetchedAt",Instant.now().toString());save();return publicArea(area);
     }
     /** Import GeoJSON cadastral polygons or manually assigned cadastral IDs into a watch zone. */
@@ -113,7 +121,7 @@ public final class Store {
         String keywords=Json.string(input.get("keywords"));
         if(keywords.length()>500)throw new IllegalArgumentException("Keywords max length 500");
         Map<String,Object> area=Json.obj("id",UUID.randomUUID().toString(),"name",name,"geometry",geometry,
-            "keywords",keywords,"createdAt",Instant.now().toString(),"streets",new ArrayList<>(),"parcels",new ArrayList<>());
+            "keywords",keywords,"createdAt",Instant.now().toString(),"streets",new ArrayList<>(),"parcels",new ArrayList<>(),"contextWays",new ArrayList<>());
         areas.add(area);save();return area;
     }
     public synchronized boolean removeArea(String id) throws IOException {
@@ -190,31 +198,118 @@ public final class Store {
     }
     public synchronized List<Map<String,Object>> view() {
         GeoDictionary index=new GeoDictionary(areas);
+        Map<String,Map<String,Object>> corridorCache=new HashMap<>();
         List<Map<String,Object>> out=new ArrayList<>();
         for(var e:events) {
             Map<String,Object> copy=new LinkedHashMap<>(e);
+            LinearWork.Spec span=LinearWork.parse(Json.string(e.get("title")));
+            // Scope introduced by the last explicit stage overrides the global project title:
+            // II stage from Silver Forest to M-7 must not match by "Несмелова" in its parent title.
+            Map<String,Object> lookup=e;
+            if(span!=null&&span.stageSpecific()) {
+                lookup=new LinkedHashMap<>(e);
+                lookup.put("title",span.scope());lookup.put("description","");
+                lookup.put("evidenceText","");lookup.put("documentText","");lookup.put("workLocation","");
+            }
+            List<Map<String,Object>> evidence=new ArrayList<>(index.find(lookup));
+            List<Map<String,Object>> corridors=new ArrayList<>();
+            Set<String> excluded=new HashSet<>();
+            boolean inferredInside=false,inferredOutside=false;
+            if(span!=null)for(var area:areas) {
+                String cacheKey=area.get("id")+"|"+span.scope();
+                Map<String,Object> assessment=corridorCache.computeIfAbsent(cacheKey,
+                    k->RoadCorridor.assess(span,area));
+                String status=Json.string(assessment.get("status"));
+                if("INTERSECTS_INFERRED".equals(status)) {
+                    inferredInside=true;
+                    Map<String,Object> ge=new LinkedHashMap<>(assessment);ge.put("areaId",area.get("id"));
+                    corridors.add(ge);
+                    evidence.add(Json.obj("areaId",area.get("id"),"area",area.get("name"),
+                        "kind","ROAD_SEGMENT","object",span.mainRoad(),"matchedText",span.scope(),
+                        "score",84,"certainty","OSM_INFERRED","source","OpenStreetMap",
+                        "explanation",assessment.get("explanation")));
+                } else if("OUTSIDE_INFERRED".equals(status)) {
+                    inferredOutside=true;excluded.add(Json.string(area.get("id")));
+                    Map<String,Object> ge=new LinkedHashMap<>(assessment);ge.put("areaId",area.get("id"));
+                    corridors.add(ge);
+                }
+            }
+            if(!excluded.isEmpty()) evidence.removeIf(hit -> excluded.contains(Json.string(hit.get("areaId")))
+                    && "STREET".equals(hit.get("kind")));
             List<String> matches=new ArrayList<>(),hints=new ArrayList<>();
-            List<Map<String,Object>> evidence=index.find(e);
             for(var hit:evidence) {
-                String name=Json.string(hit.get("area"));
-                if(!hints.contains(name))hints.add(name);
+                String name=Json.string(hit.get("area"));if(!hints.contains(name))hints.add(name);
             }
             Object p=e.get("position");
             if(p!=null) {
                 List<Object> position=Json.array(p);
                 for(var a:areas) {
-                    try {
-                        if(Geo.contains(Json.object(a.get("geometry")),Geo.num(position.get(0)),Geo.num(position.get(1))))
+                    try {if(Geo.contains(Json.object(a.get("geometry")),Geo.num(position.get(0)),Geo.num(position.get(1))))
                             matches.add(Json.string(a.get("name")));
                     }catch(IllegalArgumentException ignored){}
                 }
                 copy.put("relevance",matches.isEmpty()?"OUTSIDE":"MATCH");
-            } else copy.put("relevance",hints.isEmpty()?"UNLOCATED":"HINT");
+            } else copy.put("relevance",!hints.isEmpty()?"HINT":inferredOutside?"LIKELY_OUTSIDE":"UNLOCATED");
             copy.put("areas",matches);copy.put("hints",hints);
             copy.put("geoEvidence",evidence);
+            copy.put("linearWork",span==null?null:span.json());
+            copy.put("corridors",corridors);
             out.add(copy);
         }
         return out;
+    }
+    /** Manually confirmed project identity: document links remain independently traceable. */
+    public synchronized Map<String,Object> createProject(Map<String,Object> input)throws IOException {
+        String name=Json.string(input.get("name")).trim();
+        if(name.isBlank()||name.length()>260)throw new IllegalArgumentException("Название проекта обязательно (до 260 символов)");
+        if(projects.size()>=3000)throw new IllegalArgumentException("Слишком много проектов");
+        Map<String,Object> project=Json.obj("id",UUID.randomUUID().toString(),"name",name,
+            "createdAt",Instant.now().toString(),"notes",limit(Json.string(input.get("notes")),3000),
+            "eventIds",new ArrayList<String>(),"status","USER_CONFIRMED");
+        projects.add(project);save();return projectView(project);
+    }
+    public synchronized List<Map<String,Object>> projects() {
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(var p:projects)result.add(projectView(p));
+        return result;
+    }
+    public synchronized Map<String,Object> project(String id) {
+        for(var p:projects)if(id.equals(p.get("id")))return projectView(p);
+        return null;
+    }
+    public synchronized Map<String,Object> linkProject(String id,String eventId,boolean attach)throws IOException {
+        Map<String,Object> target=null;
+        for(var p:projects)if(id.equals(p.get("id")))target=p;
+        if(target==null)return null;
+        boolean exists=events.stream().anyMatch(e->eventId.equals(e.get("id")));
+        if(!exists)throw new IllegalArgumentException("Документ не найден");
+        List<Object> ids=Json.array(target.getOrDefault("eventIds",List.of()));
+        if(attach&&!ids.contains(eventId)){
+            if(ids.size()>=400)throw new IllegalArgumentException("Не более 400 документов в одном проекте");
+            ids.add(eventId);
+        }
+        if(!attach)ids.remove(eventId);
+        target.put("eventIds",ids);save();return projectView(target);
+    }
+    private Map<String,Object> projectView(Map<String,Object> project) {
+        Map<String,Object> copy=new LinkedHashMap<>(project);
+        Set<String> ids=new HashSet<>();
+        for(Object o:Json.array(project.getOrDefault("eventIds",List.of())))ids.add(Json.string(o));
+        List<Map<String,Object>> timeline=new ArrayList<>();
+        for(var event:events)if(ids.contains(event.get("id"))) {
+            timeline.add(Json.obj("id",event.get("id"),"title",event.get("title"),
+                "stage",event.get("stage"),"publishedAt",event.get("publishedAt"),
+                "issuedAt",event.get("issuedAt"),"firstSeen",event.get("firstSeen"),
+                "source",event.get("source"),"url",event.get("url")));
+        }
+        timeline.sort(Comparator.comparing(e -> {
+            String date=Json.string(e.get("publishedAt"));
+            if(date.isBlank())date=Json.string(e.get("issuedAt"));
+            if(date.isBlank())date=Json.string(e.get("firstSeen"));
+            return date;
+        }));
+        copy.put("timeline",timeline);
+        return copy;
     }
     /** A permissive Russian word-stem hint, never considered a confirmed spatial match. */
     static boolean keywordHint(String text,String keyword) {
@@ -237,7 +332,7 @@ public final class Store {
     }
     private void save() throws IOException {
         Path temp=file.resolveSibling(file.getFileName()+".tmp");
-        Files.writeString(temp,Json.stringify(Json.obj("version",1,"areas",areas,"events",events)), StandardCharsets.UTF_8,
+        Files.writeString(temp,Json.stringify(Json.obj("version",2,"areas",areas,"events",events,"projects",projects)), StandardCharsets.UTF_8,
             StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING);
         try {Files.move(temp,file,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}
         catch(AtomicMoveNotSupportedException e){Files.move(temp,file,StandardCopyOption.REPLACE_EXISTING);}

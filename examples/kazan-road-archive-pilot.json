@@ -1,0 +1,45 @@
+{
+  "about": "Контрольный набор заголовков реальных опубликованных постановлений Казани; не поток новых событий. Геометрия и детали работ НЕ подтверждены этим набором.",
+  "sources": [
+    "https://kzn.ru/meriya/ispolnitelnyy-komitet/upravlenie-arkhitektury-i-gradostroitelstva-ispolnitelnogo-komiteta-g-kazani/gradostroitelstvo/",
+    "https://pravo.tatarstan.ru/file/npa/2025-05/1635515/npa_1635516.pdf"
+  ],
+  "events": [
+    {
+      "title": "Постановление Исполнительного комитета г.Казани от 13.05.2020 №1331. Об утверждении проекта планировки линейного объекта «Автомобильная дорога от ул.Несмелова до М-7 через ЖК Серебряный бор. I этап – участок от ул.Несмелова до ЖК Серебряный бор»",
+      "url": "https://kzn.ru/meriya/ispolnitelnyy-komitet/upravlenie-arkhitektury-i-gradostroitelstva-ispolnitelnogo-komiteta-g-kazani/gradostroitelstvo/",
+      "issuedAt": "2020-05-13", "source": "PILOT_ARCHIVE", "externalId":"KZN-2020-1331", "demo": true,
+      "description": "Контрольный архивный заголовок. Первый этап маршрута. Дату официальной публикации и геометрию необходимо проверить отдельно."
+    },
+    {
+      "title": "Постановление Исполнительного комитета г.Казани от 23.06.2020 №1726. Об утверждении проекта межевания линейного объекта «Автомобильная дорога от ул.Несмелова до М-7 через ЖК Серебряный бор. I этап: участок №1 от ул.Несмелова до старого русла реки Казанки»",
+      "url": "https://kzn.ru/meriya/ispolnitelnyy-komitet/upravlenie-arkhitektury-i-gradostroitelstva-ispolnitelnogo-komiteta-g-kazani/gradostroitelstvo/",
+      "issuedAt": "2020-06-23", "source": "PILOT_ARCHIVE", "externalId":"KZN-2020-1726", "demo": true,
+      "description": "Контроль: первый участок первого этапа начинается от ул. Несмелова."
+    },
+    {
+      "title": "Постановление Исполнительного комитета г.Казани от 19.08.2020 №2260. Об утверждении проекта межевания линейного объекта «Автомобильная дорога от ул.Несмелова до М-7. I этап: участок №2 от старого русла реки Казанки до ЖК Серебряный бор»",
+      "url": "https://kzn.ru/meriya/ispolnitelnyy-komitet/upravlenie-arkhitektury-i-gradostroitelstva-ispolnitelnogo-komiteta-g-kazani/gradostroitelstvo/",
+      "issuedAt": "2020-08-19", "source": "PILOT_ARCHIVE", "externalId":"KZN-2020-2260", "demo": true,
+      "description": "Контроль: в названии маршрута есть Несмелова, но границы второго участка начинаются у старого русла Казанки."
+    },
+    {
+      "title": "Постановление Исполнительного комитета г.Казани от 01.11.2022 №3763. Об утверждении проекта планировки «Автомобильная дорога от ул.Несмелова до М-7 через ЖК Серебряный бор. II этап – от ЖК Серебряный бор до автомобильной дороги федерального значения М-7 Волга»",
+      "url": "https://kzn.ru/meriya/ispolnitelnyy-komitet/upravlenie-arkhitektury-i-gradostroitelstva-ispolnitelnogo-komiteta-g-kazani/gradostroitelstvo/",
+      "issuedAt": "2022-11-01", "source": "PILOT_ARCHIVE", "externalId":"KZN-2022-3763", "demo": true,
+      "description": "Контроль ложноположительного совпадения: II этап не начинается на ул. Несмелова."
+    },
+    {
+      "title": "Постановление Исполнительного комитета г.Казани от 22.05.2025 №1583. О внесении изменений в проект планировки территории «Центр» в районе Кировской дамбы",
+      "url": "https://pravo.tatarstan.ru/file/npa/2025-05/1635515/npa_1635516.pdf",
+      "issuedAt": "2025-05-22", "source": "PILOT_ARCHIVE", "externalId":"KZN-2025-1583", "demo": true,
+      "description": "Иное градостроительное изменение у Кировской дамбы; не следует автоматически объединять с трассой на М-7."
+    },
+    {
+      "title": "Постановление Исполнительного комитета г.Казани от 19.05.2026 №1708. Об утверждении проекта планировки линейного объекта «Реконструкция ул.Батыршина от ул.Галимджана Баруди до ул.Большая Крыловка в Кировском районе г.Казани»",
+      "url": "https://kzn.ru/meriya/ispolnitelnyy-komitet/upravlenie-arkhitektury-i-gradostroitelstva-ispolnitelnogo-komiteta-g-kazani/gradostroitelstvo/",
+      "issuedAt": "2026-05-19", "source": "PILOT_ARCHIVE", "externalId":"KZN-2026-1708", "demo": true,
+      "description": "Другой проект в Кировском районе. Название района само по себе не означает попадания в произвольный полигон."
+    }
+  ]
+}
